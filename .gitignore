@@ -1,11 +1,12 @@
 node_modules/
 .env
-*.log
-dist/
-build/
 .DS_Store
-*.local
-.vscode/
-.idea/
-coverage/
-*.tsbuildinfo
+
+# Self-hosted audio binaries (downloaded at build time)
+bin/audio/
+
+# Polsia test fixtures (auto-injected, do not commit)
+test-fixtures/
+
+# Client build is committed for deployment
+# client/node_modules/ is excluded via top-level node_modules/ rule
