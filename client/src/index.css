@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 221.2 83.2% 53.3%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 221.2 83.2% 53.3%;
+    --radius: 0.5rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+    /* Prevent iOS overscroll bounce on the whole page */
+    overscroll-behavior: none;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    /* Prevent iOS rubber-banding on body */
+    overscroll-behavior-y: none;
+  }
+}
+
+/* ─── Dynamic Viewport Height (mobile browser chrome fix) ────────────── */
+/* 100vh on mobile includes the browser address bar area, clipping content.
+   100dvh (dynamic viewport height) accounts for browser chrome correctly.
+   We use a CSS variable so we can apply it consistently everywhere. */
+.h-dvh-safe {
+  height: 100vh; /* fallback for older browsers */
+  height: -webkit-fill-available; /* iOS Safari fallback */
+  height: 100dvh; /* modern browsers — accounts for browser chrome */
+}
+.min-h-dvh-safe {
+  min-height: 100vh; /* fallback for older browsers */
+  min-height: -webkit-fill-available; /* iOS Safari fallback */
+  min-height: 100dvh; /* modern browsers — accounts for browser chrome */
+}
+
+/* Ensure scrollable content areas have bottom safe area for notched devices */
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .overflow-y-auto,
+  .overflow-auto {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/20 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/40;
+}
+
+/* ─── Mobile / Responsive Utilities ──────────────────────────────────── */
+
+/* Hide scrollbar but keep scroll behavior (for tab bars, horizontal nav) */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Safe area support for notched devices (iPhone X+) */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Prevent text size adjustment on orientation change (iOS) */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Smooth momentum scrolling on iOS */
+@layer utilities {
+  .touch-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Prevent pull-to-refresh on overscroll in app views */
+@media (max-width: 768px) {
+  .overflow-y-auto,
+  .overflow-auto {
+    overscroll-behavior-y: contain;
+  }
+}
