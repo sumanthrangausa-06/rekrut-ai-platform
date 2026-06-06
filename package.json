@@ -6,8 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "build": "cd client && npm install --include=dev && npm run build",
-    "migrate": "node migrate.js",
-    "postinstall": "bash scripts/setup-audio.sh 2>&1 || echo '[postinstall] Audio setup skipped (non-fatal)'"
+    "migrate": "node migrate.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.30.0",
