@@ -1,0 +1,154 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String    @id @default(cuid())
+  supabaseUid   String    @unique
+  email         String    @unique
+  firstName     String?
+  lastName      String?
+  role          UserRole  @default(CANDIDATE)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  interviews    Interview[]
+  assessments   Assessment[]
+  profile       CandidateProfile?
+
+  @@map("users")
+}
+
+enum UserRole {
+  CANDIDATE
+  RECRUITER
+  ADMIN
+}
+
+model CandidateProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id])
+  resumeText        String?
+  skills            String[] @default([])
+  experienceLevel   String?
+  currentRole       String?
+  desiredRole       String?
+  yearsOfExperience Int?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("candidate_profiles")
+}
+
+model Interview {
+  id              String          @id @default(cuid())
+  userId          String
+  user            User            @relation(fields: [userId], references: [id])
+  jobRole         String
+  experienceLevel String
+  status          InterviewStatus @default(IN_PROGRESS)
+  score           Int?
+  feedback        String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  questions       InterviewQuestion[]
+
+  @@map("interviews")
+}
+
+enum InterviewStatus {
+  IN_PROGRESS
+  COMPLETED
+  ABANDONED
+}
+
+model InterviewQuestion {
+  id          String   @id @default(cuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  question    String
+  category    String   // technical, behavioral, situational, culture_fit
+  order       Int
+
+  response    InterviewResponse?
+
+  @@map("interview_questions")
+}
+
+model InterviewResponse {
+  id           String            @id @default(cuid())
+  questionId   String            @unique
+  question     InterviewQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answer       String
+  strengths    String[]          @default([])
+  improvements String[]          @default([])
+  modelAnswer  String?
+  score        Int?              // 1-10
+  createdAt    DateTime          @default(now())
+
+  @@map("interview_responses")
+}
+
+model Assessment {
+  id          String              @id @default(cuid())
+  userId      String
+  user        User                @relation(fields: [userId], references: [id])
+  jobRole     String
+  title       String
+  status      AssessmentStatus    @default(IN_PROGRESS)
+  totalScore  Int?
+  maxScore    Int?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  questions   AssessmentQuestion[]
+
+  @@map("assessments")
+}
+
+enum AssessmentStatus {
+  IN_PROGRESS
+  COMPLETED
+  TIMED_OUT
+}
+
+model AssessmentQuestion {
+  id            String        @id @default(cuid())
+  assessmentId  String
+  assessment    Assessment    @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  question      String
+  options       String[]      @default([])  // for MCQ
+  correctAnswer String?       // for MCQ
+  type          QuestionType
+  order         Int
+
+  response      AssessmentResponse?
+
+  @@map("assessment_questions")
+}
+
+enum QuestionType {
+  MULTIPLE_CHOICE
+  OPEN_ENDED
+  CODING
+}
+
+model AssessmentResponse {
+  id         String             @id @default(cuid())
+  questionId String             @unique
+  question   AssessmentQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  answer     String
+  isCorrect  Boolean?
+  aiScore    Int?               // AI graded 1-10 for open-ended
+  aiFeedback String?
+  createdAt  DateTime           @default(now())
+
+  @@map("assessment_responses")
+}
