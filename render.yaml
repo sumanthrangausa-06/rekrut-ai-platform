@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: rekrut-ai-api
+    runtime: node
+    repo: https://github.com/sumanthrangausa-06/rekrut-ai-platform.git
+    rootDir: api
+    buildCommand: npm install && npm run build && npx prisma generate
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        value: postgresql://neondb_owner:npg_IC0wumYoWbe4@ep-calm-field-aipg6g97-pooler.c-4.us-east-1.aws.neon.tech/neondb?sslmode=require
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: FRONTEND_URL
+        value: https://rekrutai.co
+    healthCheckPath: /health
+    plan: starter
+    autoDeploy: true
