@@ -1,25 +1,5 @@
 {
   "name": "rekrut-ai",
   "version": "1.0.0",
-  "description": "AI-powered recruitment platform with AI Interview Coach, Skill Assessments, and Profile Matching",
-  "private": true,
-  "scripts": {
-    "install:api": "cd api && npm install",
-    "install:app": "cd app && npm install",
-    "install:all": "npm run install:api && npm run install:app",
-    "dev:api": "cd api && npm run dev",
-    "dev:app": "cd app && npm run dev",
-    "build:api": "cd api && npm run build",
-    "build:app": "cd app && npm run build",
-    "build:all": "npm run build:api && npm run build:app",
-    "db:push": "cd api && npx prisma db push",
-    "db:generate": "cd api && npx prisma generate",
-    "db:studio": "cd api && npx prisma studio",
-    "start:api": "cd api && npm start",
-    "deploy:api": "cd api && npm run build && npm start"
-  },
-  "workspaces": [
-    "api",
-    "app"
-  ]
+  "private": true
 }

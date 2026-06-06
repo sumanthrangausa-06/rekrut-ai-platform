@@ -102,7 +102,7 @@ export function validateQuery<T>(schema: ZodSchema<T>) {
         return;
       }
 
-      req.query = result.data as Record<string, unknown>;
+      req.query = result.data as unknown as typeof req.query;
       next();
     } catch (error) {
       console.error("Query validation error:", error);

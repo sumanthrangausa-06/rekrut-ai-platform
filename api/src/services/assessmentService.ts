@@ -1,6 +1,6 @@
-import { PrismaClient, QuestionType } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
 import { openai, AI_MODEL, callOpenAI, safeJsonParse } from "../utils/openai";
-import { AssessmentQuestionData, AIGradingResult } from "../types";
+import { AssessmentQuestionData, AIGradingResult, QuestionType } from "../types";
 
 const prisma = new PrismaClient();
 

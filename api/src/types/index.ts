@@ -1,5 +1,17 @@
 import { Request } from "express";
-import { UserRole } from "@prisma/client";
+
+// Local enums until Prisma client is generated
+export enum UserRole {
+  CANDIDATE = "CANDIDATE",
+  RECRUITER = "RECRUITER",
+  ADMIN = "ADMIN"
+}
+
+export enum QuestionType {
+  MULTIPLE_CHOICE = "MULTIPLE_CHOICE",
+  OPEN_ENDED = "OPEN_ENDED",
+  CODING = "CODING"
+}
 
 export interface AuthenticatedUser {
   id: string;

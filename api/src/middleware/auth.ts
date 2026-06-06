@@ -1,7 +1,7 @@
-import { Request, Response, NextFunction } from "express";
+import { Response, NextFunction } from "express";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
-import { AuthenticatedRequest, ApiResponse, AuthenticatedUser } from "../types";
-import { PrismaClient, UserRole } from "@prisma/client";
+import { AuthenticatedRequest, AuthenticatedUser, UserRole, ApiResponse } from "../types";
+import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 

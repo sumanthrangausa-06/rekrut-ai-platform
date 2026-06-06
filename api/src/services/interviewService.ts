@@ -326,8 +326,8 @@ export async function getInterviewFeedback(
   );
 
   // Collect all strengths and improvements
-  const allStrengths = responses.flatMap((r) => r.strengths);
-  const allImprovements = responses.flatMap((r) => r.improvements);
+  const allStrengths: string[] = responses.flatMap((r: {strengths: string[]}) => r.strengths);
+  const allImprovements: string[] = responses.flatMap((r: {improvements: string[]}) => r.improvements);
 
   // Use OpenAI to generate overall feedback
   const strengthsText = allStrengths.join("; ");
@@ -374,7 +374,7 @@ Be encouraging but honest. Focus on actionable advice.`;
 
   if (aiResult.success) {
     const content = aiResult.data.choices[0]?.message?.content || "{}";
-    const aiFeedback = safeJsonParse<InterviewFeedback>(content, {
+    const aiFeedback = safeJsonParse<Omit<InterviewFeedback, "overallScore">>(content, {
       summary: `Overall score: ${avgScore}/10. Keep practicing to improve your interview performance.`,
       strengths: allStrengths.slice(0, 3),
       keyImprovements: allImprovements.slice(0, 3),
