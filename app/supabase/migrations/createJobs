@@ -1,0 +1,303 @@
+-- create jobs table with company ownership
+
+
+-- Create job status enum
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'job_status') THEN
+    CREATE TYPE public.job_status AS ENUM ('draft', 'published', 'closed', 'archived');
+  END IF;
+END$$;
+
+
+-- Create job type enum
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'job_type') THEN
+    CREATE TYPE public.job_type AS ENUM ('full_time', 'part_time', 'contract', 'internship', 'temporary');
+  END IF;
+END$$;
+
+
+-- Create work mode enum
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'work_mode') THEN
+    CREATE TYPE public.work_mode AS ENUM ('remote', 'hybrid', 'onsite');
+  END IF;
+END$$;
+
+
+-- Create jobs table
+CREATE TABLE IF NOT EXISTS public.jobs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ 
+  -- Company relationship (REQUIRED)
+  company_id UUID NOT NULL REFERENCES public.companies(id) ON DELETE CASCADE,
+  created_by UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+ 
+  -- Basic job info
+  title TEXT NOT NULL,
+  slug TEXT UNIQUE,
+  description TEXT NOT NULL,
+ 
+  -- Job details
+  job_type public.job_type NOT NULL DEFAULT 'full_time',
+  work_mode public.work_mode NOT NULL DEFAULT 'onsite',
+  location TEXT,
+  salary_min INTEGER,
+  salary_max INTEGER,
+  salary_currency TEXT DEFAULT 'USD',
+ 
+  -- Requirements
+  experience_min INTEGER,
+  experience_max INTEGER,
+  required_skills TEXT[],
+  preferred_skills TEXT[],
+  education_requirement TEXT,
+ 
+  -- Application details
+  application_deadline DATE,
+  positions_available INTEGER DEFAULT 1,
+ 
+  -- Status
+  "status" public.job_status NOT NULL DEFAULT 'draft',
+  published_at TIMESTAMPTZ,
+  closed_at TIMESTAMPTZ,
+ 
+  -- Metadata
+  view_count INTEGER DEFAULT 0,
+  application_count INTEGER DEFAULT 0,
+ 
+  -- Search optimization
+  search_vector tsvector,
+ 
+  CONSTRAINT valid_salary_range CHECK (salary_max IS NULL OR salary_min IS NULL OR salary_max >= salary_min),
+  CONSTRAINT valid_experience_range CHECK (experience_max IS NULL OR experience_min IS NULL OR experience_max >= experience_min),
+  CONSTRAINT valid_positions CHECK (positions_available > 0)
+);
+
+
+-- Enable RLS
+ALTER TABLE public.jobs ENABLE ROW LEVEL SECURITY;
+
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_jobs_company_id ON public.jobs(company_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_created_by ON public.jobs(created_by);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON public.jobs("status");
+CREATE INDEX IF NOT EXISTS idx_jobs_slug ON public.jobs(slug) WHERE slug IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_jobs_published_at ON public.jobs(published_at DESC NULLS LAST) WHERE "status" = 'published';
+CREATE INDEX IF NOT EXISTS idx_jobs_search_vector ON public.jobs USING gin(search_vector);
+
+
+-- RLS Policies
+DROP POLICY IF EXISTS "jobs_select_published" ON public.jobs;
+CREATE POLICY "jobs_select_published"
+  ON public.jobs FOR SELECT
+  USING ("status" = 'published' OR auth.uid() = created_by OR public.has_role(auth.uid(), 'admin'::public.app_role));
+
+
+DROP POLICY IF EXISTS "jobs_insert_recruiter" ON public.jobs;
+CREATE POLICY "jobs_insert_recruiter"
+  ON public.jobs FOR INSERT
+  WITH CHECK (
+    public.has_role(auth.uid(), 'recruiter'::public.app_role)
+    AND auth.uid() = created_by
+    AND EXISTS (
+      SELECT 1 FROM public.companies
+      WHERE id = company_id AND created_by = auth.uid()
+    )
+  );
+
+
+DROP POLICY IF EXISTS "jobs_update_owner" ON public.jobs;
+CREATE POLICY "jobs_update_owner"
+  ON public.jobs FOR UPDATE
+  USING (
+    auth.uid() = created_by
+    OR public.has_role(auth.uid(), 'admin'::public.app_role)
+    OR EXISTS (
+      SELECT 1 FROM public.companies
+      WHERE id = company_id AND created_by = auth.uid()
+    )
+  );
+
+
+DROP POLICY IF EXISTS "jobs_delete_owner" ON public.jobs;
+CREATE POLICY "jobs_delete_owner"
+  ON public.jobs FOR DELETE
+  USING (
+    auth.uid() = created_by
+    OR public.has_role(auth.uid(), 'admin'::public.app_role)
+    OR EXISTS (
+      SELECT 1 FROM public.companies
+      WHERE id = company_id AND created_by = auth.uid()
+    )
+  );
+
+
+-- Trigger for updated_at
+DROP TRIGGER IF EXISTS jobs_updated_at ON public.jobs;
+CREATE TRIGGER jobs_updated_at
+  BEFORE UPDATE ON public.jobs
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+-- Function to generate unique slug
+CREATE OR REPLACE FUNCTION public.generate_job_slug(job_title TEXT, job_id UUID)
+RETURNS TEXT
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  base_slug TEXT;
+  final_slug TEXT;
+  counter INTEGER := 0;
+BEGIN
+  base_slug := lower(trim(job_title));
+  base_slug := regexp_replace(base_slug, '[^a-z0-9\s-]', '', 'g');
+  base_slug := regexp_replace(base_slug, '\s+', '-', 'g');
+  base_slug := regexp_replace(base_slug, '-+', '-', 'g');
+  base_slug := trim(both '-' from base_slug);
+ 
+  final_slug := base_slug;
+ 
+  WHILE EXISTS (SELECT 1 FROM public.jobs WHERE slug = final_slug AND id != job_id) LOOP
+    counter := counter + 1;
+    final_slug := base_slug || '-' || counter;
+  END LOOP;
+ 
+  RETURN final_slug;
+END;
+$$;
+
+
+-- Trigger to auto-generate slug
+CREATE OR REPLACE FUNCTION public.set_job_slug()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW.slug IS NULL OR NEW.slug = '' THEN
+    NEW.slug := public.generate_job_slug(NEW.title, NEW.id);
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+
+DROP TRIGGER IF EXISTS jobs_set_slug ON public.jobs;
+CREATE TRIGGER jobs_set_slug
+  BEFORE INSERT OR UPDATE OF title ON public.jobs
+  FOR EACH ROW EXECUTE FUNCTION public.set_job_slug();
+
+
+-- Function to update search vector
+CREATE OR REPLACE FUNCTION public.update_job_search_vector()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  NEW.search_vector :=
+    setweight(to_tsvector('english', COALESCE(NEW.title, '')), 'A') ||
+    setweight(to_tsvector('english', COALESCE(NEW.description, '')), 'B') ||
+    setweight(to_tsvector('english', COALESCE(array_to_string(NEW.required_skills, ' '), '')), 'C') ||
+    setweight(to_tsvector('english', COALESCE(NEW.location, '')), 'D');
+  RETURN NEW;
+END;
+$$;
+
+
+DROP TRIGGER IF EXISTS jobs_search_vector_update ON public.jobs;
+CREATE TRIGGER jobs_search_vector_update
+  BEFORE INSERT OR UPDATE ON public.jobs
+  FOR EACH ROW EXECUTE FUNCTION public.update_job_search_vector();
+
+
+-- Function to auto-set published_at
+CREATE OR REPLACE FUNCTION public.set_job_published_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  IF NEW."status" = 'published' AND (OLD."status" IS NULL OR OLD."status" != 'published') THEN
+    NEW.published_at := now();
+  END IF;
+ 
+  IF NEW."status" = 'closed' AND (OLD."status" IS NULL OR OLD."status" != 'closed') THEN
+    NEW.closed_at := now();
+  END IF;
+ 
+  RETURN NEW;
+END;
+$$;
+
+
+DROP TRIGGER IF EXISTS jobs_set_published_at ON public.jobs;
+CREATE TRIGGER jobs_set_published_at
+  BEFORE UPDATE ON public.jobs
+  FOR EACH ROW EXECUTE FUNCTION public.set_job_published_at();
+
+
+-- Create job applications table
+CREATE TABLE IF NOT EXISTS public.job_applications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ 
+  job_id UUID NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
+  candidate_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+ 
+  cover_letter TEXT,
+  resume_url TEXT,
+  "status" TEXT DEFAULT 'submitted',
+ 
+  viewed_at TIMESTAMPTZ,
+  responded_at TIMESTAMPTZ,
+ 
+  CONSTRAINT unique_job_application UNIQUE(job_id, candidate_id)
+);
+
+
+ALTER TABLE public.job_applications ENABLE ROW LEVEL SECURITY;
+
+
+CREATE INDEX IF NOT EXISTS idx_job_applications_job_id ON public.job_applications(job_id);
+CREATE INDEX IF NOT EXISTS idx_job_applications_candidate_id ON public.job_applications(candidate_id);
+CREATE INDEX IF NOT EXISTS idx_job_applications_status ON public.job_applications("status");
+
+
+DROP POLICY IF EXISTS "applications_select_own_or_recruiter" ON public.job_applications;
+CREATE POLICY "applications_select_own_or_recruiter"
+  ON public.job_applications FOR SELECT
+  USING (
+    auth.uid() = candidate_id
+    OR EXISTS (
+      SELECT 1 FROM public.jobs j
+      WHERE j.id = job_id AND j.created_by = auth.uid()
+    )
+    OR public.has_role(auth.uid(), 'admin'::public.app_role)
+  );
+
+
+DROP POLICY IF EXISTS "applications_insert_candidate" ON public.job_applications;
+CREATE POLICY "applications_insert_candidate"
+  ON public.job_applications FOR INSERT
+  WITH CHECK (
+    public.has_role(auth.uid(), 'candidate'::public.app_role)
+    AND auth.uid() = candidate_id
+  );
+
+
+DROP POLICY IF EXISTS "applications_update_own" ON public.job_applications;
+CREATE POLICY "applications_update_own"
+  ON public.job_applications FOR UPDATE
+  USING (auth.uid() = candidate_id);
+
+
+DROP TRIGGER IF EXISTS job_applications_updated_at ON public.job_applications;
+CREATE TRIGGER job_applications_updated_at
+  BEFORE UPDATE ON public.job_applications
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();

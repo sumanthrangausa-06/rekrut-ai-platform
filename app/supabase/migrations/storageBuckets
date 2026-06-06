@@ -1,0 +1,113 @@
+-- Supabase Storage Buckets Setup
+
+
+-- Create storage bucket for profiles
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('profiles', 'profiles', true)
+ON CONFLICT (id) DO NOTHING;
+
+
+-- Create storage bucket for companies
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('companies', 'companies', true)
+ON CONFLICT (id) DO NOTHING;
+
+
+-- Storage policies for profiles bucket
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS "Anyone can view profile files" ON storage.objects;
+  DROP POLICY IF EXISTS "Authenticated users can upload their own profile files" ON storage.objects;
+  DROP POLICY IF EXISTS "Users can update their own profile files" ON storage.objects;
+  DROP POLICY IF EXISTS "Users can delete their own profile files" ON storage.objects;
+EXCEPTION
+  WHEN undefined_object THEN NULL;
+END $$;
+
+
+CREATE POLICY "Anyone can view profile files"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'profiles');
+
+
+CREATE POLICY "Authenticated users can upload their own profile files"
+ON storage.objects FOR INSERT
+WITH CHECK (
+  bucket_id = 'profiles'
+  AND auth.uid()::text = (storage.foldername(name))[1]
+);
+
+
+CREATE POLICY "Users can update their own profile files"
+ON storage.objects FOR UPDATE
+USING (
+  bucket_id = 'profiles'
+  AND auth.uid()::text = (storage.foldername(name))[1]
+);
+
+
+CREATE POLICY "Users can delete their own profile files"
+ON storage.objects FOR DELETE
+USING (
+  bucket_id = 'profiles'
+  AND auth.uid()::text = (storage.foldername(name))[1]
+);
+
+
+-- Storage policies for companies bucket
+DO $$
+BEGIN
+  DROP POLICY IF EXISTS "Anyone can view company files" ON storage.objects;
+  DROP POLICY IF EXISTS "Recruiters can upload company files" ON storage.objects;
+  DROP POLICY IF EXISTS "Company owners can update their company files" ON storage.objects;
+  DROP POLICY IF EXISTS "Company owners can delete their company files" ON storage.objects;
+EXCEPTION
+  WHEN undefined_object THEN NULL;
+END $$;
+
+
+CREATE POLICY "Anyone can view company files"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'companies');
+
+
+CREATE POLICY "Recruiters can upload company files"
+ON storage.objects FOR INSERT
+WITH CHECK (
+  bucket_id = 'companies'
+  AND EXISTS (
+    SELECT 1 FROM public.user_roles
+    WHERE user_id = auth.uid()
+    AND role IN ('recruiter'::public.app_role, 'admin'::public.app_role)
+  )
+);
+
+
+CREATE POLICY "Company owners can update their company files"
+ON storage.objects FOR UPDATE
+USING (
+  bucket_id = 'companies'
+  AND EXISTS (
+    SELECT 1 FROM public.companies
+    WHERE id::text = (storage.foldername(name))[1]
+    AND (created_by = auth.uid() OR EXISTS (
+      SELECT 1 FROM public.user_roles
+      WHERE user_id = auth.uid() AND role = 'admin'::public.app_role
+    ))
+  )
+);
+
+
+CREATE POLICY "Company owners can delete their company files"
+ON storage.objects FOR DELETE
+USING (
+  bucket_id = 'companies'
+  AND EXISTS (
+    SELECT 1 FROM public.companies
+    WHERE id::text = (storage.foldername(name))[1]
+    AND (created_by = auth.uid() OR EXISTS (
+      SELECT 1 FROM public.user_roles
+      WHERE user_id = auth.uid() AND role = 'admin'::public.app_role
+    ))
+  )
+);

@@ -1,0 +1,272 @@
+-- profile tables migration: adds profile fields for the candidate and recruiters
+
+
+-- profiles table already exists from other migration
+
+
+-- create companies table FIRST (because recruiter_profiles references it)
+CREATE TABLE IF NOT EXISTS public.companies (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ 
+  -- basic info
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE,
+  website TEXT,
+  description TEXT,
+ 
+  -- brand
+  logo_url TEXT,
+  banner_url TEXT,
+ 
+  -- location
+  headquarters_location TEXT,
+  locations TEXT[],
+ 
+  -- size and industry
+  company_size TEXT,
+  industry TEXT,
+ 
+  -- verification
+  verification_status TEXT DEFAULT 'pending',
+  business_documents TEXT[],
+  verified_at TIMESTAMPTZ,
+ 
+  -- ownership
+  created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+ 
+  -- meta
+  is_active BOOLEAN NOT NULL DEFAULT true
+);
+
+
+-- create candidate profiles table for candidate data
+CREATE TABLE IF NOT EXISTS public.candidate_profiles (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ 
+  -- experience and skills
+  experience_level TEXT,
+  "current_role" TEXT,
+  target_roles TEXT[],
+  skills TEXT[],
+ 
+  -- resume and docs
+  resume_url TEXT,
+  portfolio_url TEXT,
+  linkedin_url TEXT,
+  github_url TEXT,
+ 
+  -- preferences
+  preferred_locations TEXT[],
+  remote_preference TEXT,
+  salary_expectation_min INTEGER,
+  salary_expectation_max INTEGER,
+  availability_date DATE,
+ 
+  -- profile completions
+  profile_completed BOOLEAN NOT NULL DEFAULT false
+);
+
+
+-- create the recruiter profiles table (AFTER companies table exists)
+CREATE TABLE IF NOT EXISTS public.recruiter_profiles (
+  user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ 
+  -- professional info
+  recruiter_type TEXT,
+  job_title TEXT,
+ 
+  -- company association (NOW this works because companies exists)
+  company_id UUID REFERENCES public.companies(id) ON DELETE SET NULL,
+ 
+  -- contact and social
+  linkedin_url TEXT,
+ 
+  -- profile completion
+  profile_completed BOOLEAN NOT NULL DEFAULT false
+);
+
+
+-- enable RLS on new tables
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.candidate_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.recruiter_profiles ENABLE ROW LEVEL SECURITY;
+
+
+-- RLS Policies for companies
+DROP POLICY IF EXISTS "companies_select_all" ON public.companies;
+CREATE POLICY "companies_select_all"
+  ON public.companies FOR SELECT
+  USING (is_active = true OR auth.uid() = created_by OR public.has_role(auth.uid(), 'admin'::public.app_role));
+
+
+DROP POLICY IF EXISTS "companies_insert_recruiter" ON public.companies;
+CREATE POLICY "companies_insert_recruiter"
+  ON public.companies FOR INSERT
+  WITH CHECK (public.has_role(auth.uid(), 'recruiter'::public.app_role) OR public.has_role(auth.uid(), 'admin'::public.app_role));
+
+
+DROP POLICY IF EXISTS "companies_update_owner_or_admin" ON public.companies;
+CREATE POLICY "companies_update_owner_or_admin"
+  ON public.companies FOR UPDATE
+  USING (auth.uid() = created_by OR public.has_role(auth.uid(), 'admin'::public.app_role));
+
+
+DROP POLICY IF EXISTS "companies_delete_owner_or_admin" ON public.companies;
+CREATE POLICY "companies_delete_owner_or_admin"
+  ON public.companies FOR DELETE
+  USING (auth.uid() = created_by OR public.has_role(auth.uid(), 'admin'::public.app_role));
+
+
+-- RLS policies for candidate profiles table
+DROP POLICY IF EXISTS "candidate_profile_select_own_or_admin" ON public.candidate_profiles;
+CREATE POLICY "candidate_profile_select_own_or_admin"
+  ON public.candidate_profiles FOR SELECT
+  USING (auth.uid() = user_id OR public.has_role(auth.uid(), 'admin'::public.app_role));
+
+
+DROP POLICY IF EXISTS "candidate_profile_insert_own" ON public.candidate_profiles;
+CREATE POLICY "candidate_profile_insert_own"
+  ON public.candidate_profiles FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+
+DROP POLICY IF EXISTS "candidate_profile_update_own" ON public.candidate_profiles;
+CREATE POLICY "candidate_profile_update_own"
+  ON public.candidate_profiles FOR UPDATE
+  USING (auth.uid() = user_id);
+
+
+DROP POLICY IF EXISTS "candidate_profile_delete_own" ON public.candidate_profiles;
+CREATE POLICY "candidate_profile_delete_own"
+  ON public.candidate_profiles FOR DELETE
+  USING (auth.uid() = user_id);
+
+
+-- RLS Policies for recruiter profiles table
+DROP POLICY IF EXISTS "recruiter_profile_select_own_or_admin" ON public.recruiter_profiles;
+CREATE POLICY "recruiter_profile_select_own_or_admin"
+  ON public.recruiter_profiles FOR SELECT
+  USING (auth.uid() = user_id OR public.has_role(auth.uid(), 'admin'::public.app_role));
+
+
+DROP POLICY IF EXISTS "recruiter_profile_insert_own" ON public.recruiter_profiles;
+CREATE POLICY "recruiter_profile_insert_own"
+  ON public.recruiter_profiles FOR INSERT
+  WITH CHECK (auth.uid() = user_id);
+
+
+DROP POLICY IF EXISTS "recruiter_profile_update_own" ON public.recruiter_profiles;
+CREATE POLICY "recruiter_profile_update_own"
+  ON public.recruiter_profiles FOR UPDATE
+  USING (auth.uid() = user_id);
+
+
+DROP POLICY IF EXISTS "recruiter_profile_delete_own" ON public.recruiter_profiles;
+CREATE POLICY "recruiter_profile_delete_own"
+  ON public.recruiter_profiles FOR DELETE
+  USING (auth.uid() = user_id);
+
+
+-- triggers for updated at
+DROP TRIGGER IF EXISTS companies_updated_at ON public.companies;
+CREATE TRIGGER companies_updated_at
+  BEFORE UPDATE ON public.companies
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+DROP TRIGGER IF EXISTS candidate_profiles_updated_at ON public.candidate_profiles;
+CREATE TRIGGER candidate_profiles_updated_at
+  BEFORE UPDATE ON public.candidate_profiles
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+DROP TRIGGER IF EXISTS recruiter_profiles_updated_at ON public.recruiter_profiles;
+CREATE TRIGGER recruiter_profiles_updated_at
+  BEFORE UPDATE ON public.recruiter_profiles
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+
+-- indexes for performance
+CREATE INDEX IF NOT EXISTS idx_companies_slug ON public.companies(slug) WHERE slug IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_companies_created_by ON public.companies(created_by);
+CREATE INDEX IF NOT EXISTS idx_candidate_profiles_user_id ON public.candidate_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_recruiter_profiles_user_id ON public.recruiter_profiles(user_id);
+
+
+-- function to create candidate profile on signup
+CREATE OR REPLACE FUNCTION public.handle_new_candidate()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.candidate_profiles (user_id)
+  VALUES (NEW.id)
+  ON CONFLICT (user_id) DO NOTHING;
+ 
+  RETURN NEW;
+END;
+$$;
+
+
+-- function to create recruiter profile on signup
+CREATE OR REPLACE FUNCTION public.handle_new_recruiter()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.recruiter_profiles (user_id)
+  VALUES (NEW.id)
+  ON CONFLICT (user_id) DO NOTHING;
+ 
+  RETURN NEW;
+END;
+$$;
+
+
+-- trigger to auto-create candidate/recruiter profile based on role
+CREATE OR REPLACE FUNCTION public.handle_profile_type_creation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  _role public.app_role;
+BEGIN
+  -- get user's role
+  SELECT role INTO _role
+  FROM public.user_roles
+  WHERE user_id = NEW.id;
+
+
+  -- create appropriate profile type
+  IF _role = 'candidate' THEN
+    INSERT INTO public.candidate_profiles (user_id)
+    VALUES (NEW.id)
+    ON CONFLICT (user_id) DO NOTHING;
+  ELSIF _role = 'recruiter' THEN
+    INSERT INTO public.recruiter_profiles (user_id)
+    VALUES (NEW.id)
+    ON CONFLICT (user_id) DO NOTHING;
+  END IF;
+
+
+  RETURN NEW;
+END;
+$$;
+
+
+DROP TRIGGER IF EXISTS on_profile_created ON public.profiles;
+CREATE TRIGGER on_profile_created
+  AFTER INSERT ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.handle_profile_type_creation();

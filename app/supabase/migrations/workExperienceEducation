@@ -1,0 +1,112 @@
+-- Add work experience and education tables
+-- Filename: 20260122000003_work_experience_education.sql
+
+-- Create work_experience table
+CREATE TABLE IF NOT EXISTS public.work_experience (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  
+  -- Links to candidate
+  candidate_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  
+  -- Work details
+  company TEXT NOT NULL,
+  title TEXT NOT NULL,
+  location TEXT,
+  start_date DATE NOT NULL,
+  end_date DATE,
+  is_current BOOLEAN NOT NULL DEFAULT false,
+  description TEXT,
+  
+  CONSTRAINT valid_work_dates CHECK (end_date IS NULL OR end_date >= start_date)
+);
+
+-- Create education table
+CREATE TABLE IF NOT EXISTS public.education (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  
+  -- Links to candidate
+  candidate_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  
+  -- Education details
+  school TEXT NOT NULL,
+  degree TEXT,
+  field_of_study TEXT,
+  start_date DATE,
+  end_date DATE,
+  is_current BOOLEAN NOT NULL DEFAULT false,
+  grade TEXT,
+  description TEXT,
+  
+  CONSTRAINT valid_education_dates CHECK (end_date IS NULL OR end_date >= start_date)
+);
+
+-- Add current_location to candidate_profiles
+ALTER TABLE public.candidate_profiles
+ADD COLUMN IF NOT EXISTS current_location TEXT;
+
+-- Enable RLS
+ALTER TABLE public.work_experience ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.education ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policies for work_experience
+DROP POLICY IF EXISTS "work_experience_select_own" ON public.work_experience;
+CREATE POLICY "work_experience_select_own"
+  ON public.work_experience FOR SELECT
+  USING (auth.uid() = candidate_id);
+
+DROP POLICY IF EXISTS "work_experience_insert_own" ON public.work_experience;
+CREATE POLICY "work_experience_insert_own"
+  ON public.work_experience FOR INSERT
+  WITH CHECK (auth.uid() = candidate_id);
+
+DROP POLICY IF EXISTS "work_experience_update_own" ON public.work_experience;
+CREATE POLICY "work_experience_update_own"
+  ON public.work_experience FOR UPDATE
+  USING (auth.uid() = candidate_id);
+
+DROP POLICY IF EXISTS "work_experience_delete_own" ON public.work_experience;
+CREATE POLICY "work_experience_delete_own"
+  ON public.work_experience FOR DELETE
+  USING (auth.uid() = candidate_id);
+
+-- RLS Policies for education
+DROP POLICY IF EXISTS "education_select_own" ON public.education;
+CREATE POLICY "education_select_own"
+  ON public.education FOR SELECT
+  USING (auth.uid() = candidate_id);
+
+DROP POLICY IF EXISTS "education_insert_own" ON public.education;
+CREATE POLICY "education_insert_own"
+  ON public.education FOR INSERT
+  WITH CHECK (auth.uid() = candidate_id);
+
+DROP POLICY IF EXISTS "education_update_own" ON public.education;
+CREATE POLICY "education_update_own"
+  ON public.education FOR UPDATE
+  USING (auth.uid() = candidate_id);
+
+DROP POLICY IF EXISTS "education_delete_own" ON public.education;
+CREATE POLICY "education_delete_own"
+  ON public.education FOR DELETE
+  USING (auth.uid() = candidate_id);
+
+-- Triggers for updated_at
+DROP TRIGGER IF EXISTS work_experience_updated_at ON public.work_experience;
+CREATE TRIGGER work_experience_updated_at
+  BEFORE UPDATE ON public.work_experience
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+DROP TRIGGER IF EXISTS education_updated_at ON public.education;
+CREATE TRIGGER education_updated_at
+  BEFORE UPDATE ON public.education
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
+-- Indexes for performance
+CREATE INDEX IF NOT EXISTS idx_work_experience_candidate ON public.work_experience(candidate_id);
+CREATE INDEX IF NOT EXISTS idx_work_experience_dates ON public.work_experience(start_date DESC, end_date DESC);
+CREATE INDEX IF NOT EXISTS idx_education_candidate ON public.education(candidate_id);
+CREATE INDEX IF NOT EXISTS idx_education_dates ON public.education(start_date DESC, end_date DESC);
